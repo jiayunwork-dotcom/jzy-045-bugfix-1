@@ -1,0 +1,18 @@
+services:
+  enzyme-kinetics:
+    build: .
+    image: enzyme-kinetics:latest
+    container_name: enzyme-kinetics
+    ports:
+      - "8080:8080"
+    volumes:
+      - enzyme-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:8080/health',timeout=3); sys.exit(0 if r.status==200 and json.loads(r.read())['status']=='ok' else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  enzyme-data:
