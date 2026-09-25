@@ -408,6 +408,46 @@ def test_registered_enzyme_usable_for_both_endpoints(client):
     assert body["rate"] == pytest.approx(6.0)
 
 
+def test_inhibited_inline_ki_overrides_profile_default(client):
+    # 回归：点名带默认 Ki 的已登记酶，同时本次请求另给 ki —— 请求值必须优先。
+    client.post(
+        "/enzymes",
+        json={"name": "kinase", "vmax": 10.0, "km": 0.1, "ki": 0.05},
+    )
+    resp = client.post(
+        "/rate/inhibited",
+        json={
+            "enzyme": "kinase",
+            "substrate": 0.125,
+            "inhibitor": 0.05,
+            "ki": 0.2,
+            "inhibition_type": "competitive",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    # 本次 ki=0.2 生效：factor = 1 + 0.05/0.2 = 1.25（若错用默认 0.05 则为 2.0）
+    assert body["ki"] == pytest.approx(0.2)
+    assert body["factor"] == pytest.approx(1.25)
+    assert body["apparent_km"] == pytest.approx(0.125)
+    assert body["apparent_vmax"] == 10.0  # 竞争性抑制不改动 Vmax
+    assert body["rate"] == pytest.approx(5.0)  # 半饱和点右移到新的 Km_app=0.125
+
+    # 对照：不另给 ki 时仍按参数档默认 0.05 计算（老行为不变）
+    fallback = client.post(
+        "/rate/inhibited",
+        json={
+            "enzyme": "kinase",
+            "substrate": 0.2,
+            "inhibitor": 0.05,
+            "inhibition_type": "competitive",
+        },
+    ).get_json()
+    assert fallback["ki"] == pytest.approx(0.05)
+    assert fallback["factor"] == pytest.approx(2.0)
+    assert fallback["apparent_km"] == pytest.approx(0.2)
+
+
 def test_persistence_across_restart(tmp_path):
     path = tmp_path / "enz.json"
     app1 = create_app(store=EnzymeStore(path))

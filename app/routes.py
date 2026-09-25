@@ -173,12 +173,12 @@ def rate_inhibited_endpoint():
     inhibitor = require_non_negative(raw["inhibitor"], "inhibitor")
 
     profile = consts["profile"]
-    # 抑制常数 Ki：优先采用参数档里登记的 Ki（酶自身的动力学属性），
-    # 未登记时才回退到请求内联给出的 ki。
-    if profile.get("ki") is not None:
-        ki = require_positive(profile["ki"], "ki")
-    elif "ki" in raw:
+    # 抑制常数 Ki：请求内联显式给出的 ki 是本次计算的特意指定，优先采用；
+    # 未给出时才回退到参数档里登记的默认 Ki。
+    if "ki" in raw:
         ki = require_positive(raw["ki"], "ki")
+    elif profile.get("ki") is not None:
+        ki = require_positive(profile["ki"], "ki")
     else:
         raise ValidationError(
             "竞争性抑制计算必须给出抑制常数 ki：请在请求内联提供，或使用预置了 "
