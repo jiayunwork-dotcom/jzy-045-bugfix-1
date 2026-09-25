@@ -227,6 +227,46 @@ def test_inhibited_requires_ki(client):
     assert resp.get_json()["field"] == "ki"
 
 
+def test_inhibited_request_ki_overrides_enzyme_default(client):
+    # 回归：点名已登记酶（默认 Ki=0.05）的同时，本次请求另给 ki=0.2，
+    # 必须以请求值为准：factor = 1 + 0.05/0.2 = 1.25，而不是按默认值的 2.0。
+    client.post(
+        "/enzymes",
+        json={"name": "ki_defaulted", "vmax": 10.0, "km": 0.1, "ki": 0.05},
+    )
+    resp = client.post(
+        "/rate/inhibited",
+        json={
+            "enzyme": "ki_defaulted",
+            "substrate": 0.2,
+            "inhibitor": 0.05,
+            "ki": 0.2,
+            "inhibition_type": "competitive",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ki"] == pytest.approx(0.2)
+    assert body["factor"] == pytest.approx(1.25)
+    assert body["apparent_km"] == pytest.approx(0.125)
+    assert body["apparent_vmax"] == 10.0  # 最大速率不变
+    assert body["rate"] == pytest.approx(10.0 * 0.2 / (0.2 + 0.125))
+
+    # 对照：同一次计算不另给 ki 时，仍回退到登记的默认 Ki=0.05。
+    fallback = client.post(
+        "/rate/inhibited",
+        json={
+            "enzyme": "ki_defaulted",
+            "substrate": 0.2,
+            "inhibitor": 0.05,
+            "inhibition_type": "competitive",
+        },
+    ).get_json()
+    assert fallback["ki"] == pytest.approx(0.05)
+    assert fallback["factor"] == pytest.approx(2.0)
+    assert fallback["apparent_km"] == pytest.approx(0.2)
+
+
 def test_inhibited_rejects_noncompetitive_type(client):
     resp = client.post(
         "/rate/inhibited",
